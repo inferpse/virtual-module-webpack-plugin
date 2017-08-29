@@ -11,9 +11,24 @@ class VirtualModulePlugin {
 
   apply(compiler) {
     const moduleName = this.options.moduleName;
-    const contents = this.options.contents;
     const ctime = VirtualModulePlugin.statsDate();
     let modulePath = this.options.path;
+
+    let contents;
+    if (typeof this.options.contents === 'string') {
+      contents = this.options.contents;
+    }
+    if (typeof this.options.contents === 'object') {
+      if (typeof this.options.contents.then !== 'function') {
+        contents = JSON.stringify(this.options.contents);
+      }
+    }
+    if (typeof this.options.contents === 'function') {
+      contents = this.options.contents();
+    }
+    if (typeof contents === 'string') {
+      contents = Promise.resolve(contents);
+    }
 
     function resolverPlugin(request, cb) {
       // populate the file system cache with the virtual module
@@ -28,18 +43,25 @@ class VirtualModulePlugin {
       if (!modulePath) {
         modulePath = this.join(compiler.context, moduleName);
       }
-      VirtualModulePlugin.populateFilesystem({ fs, modulePath, contents, ctime });
-      if (cb) {
-        cb();
+
+      const resolve = (data) => {
+        VirtualModulePlugin.populateFilesystem({ fs, modulePath, contents: data, ctime });
+      };
+
+      const resolved = contents.then(resolve);
+      if (!cb) {
+        return;
       }
+
+      resolved.then(() => cb());
     }
 
     if (!compiler.resolvers.normal) {
       compiler.plugin('after-resolvers', () => {
-        compiler.resolvers.normal.plugin('resolve', resolverPlugin);
+        compiler.resolvers.normal.plugin('before-resolve', resolverPlugin);
       });
     } else {
-      compiler.resolvers.normal.plugin('resolve', resolverPlugin);
+      compiler.resolvers.normal.plugin('before-resolve', resolverPlugin);
     }
   }
 
@@ -47,12 +69,28 @@ class VirtualModulePlugin {
     const fs = options.fs;
     const modulePath = options.modulePath;
     const contents = options.contents;
-    if (fs._readFileStorage.data[modulePath]) {
+    const mapIsAvailable = typeof Map !== 'undefined';
+    const statStorageIsMap = mapIsAvailable && fs._statStorage.data instanceof Map;
+    const readFileStorageIsMap = mapIsAvailable && fs._readFileStorage.data instanceof Map;
+
+    if (readFileStorageIsMap) { // enhanced-resolve@3.4.0 or greater
+      if (fs._readFileStorage.data.has(modulePath)) {
+        return;
+      }
+    } else if (fs._readFileStorage.data[modulePath]) { // enhanced-resolve@3.3.0 or lower
       return;
     }
     const stats = VirtualModulePlugin.createStats(options);
-    fs._statStorage.data[modulePath] = [null, stats];
-    fs._readFileStorage.data[modulePath] = [null, contents];
+    if (statStorageIsMap) { // enhanced-resolve@3.4.0 or greater
+      fs._statStorage.data.set(modulePath, [null, stats]);
+    } else { // enhanced-resolve@3.3.0 or lower
+      fs._statStorage.data[modulePath] = [null, stats];
+    }
+    if (readFileStorageIsMap) { // enhanced-resolve@3.4.0 or greater
+      fs._readFileStorage.data.set(modulePath, [null, contents]);
+    } else { // enhanced-resolve@3.3.0 or lower
+      fs._readFileStorage.data[modulePath] = [null, contents];
+    }
   }
 
   static statsDate(inputDate) {

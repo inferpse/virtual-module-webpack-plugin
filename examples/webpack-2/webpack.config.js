@@ -3,12 +3,14 @@
 const path = require('path');
 // eslint-disable-next-line import/no-extraneous-dependencies
 const ExtractTextPlugin = require('extract-text-webpack-plugin');
-const VirtualModulePlugin = require('../index');
+// in actual use, you would `require('virtual-module-webpack-plugin')` here
+const VirtualModulePlugin = require('../../index');
 
 module.exports = function webpackConfig() {
-  const runtimeJsonContents = JSON.stringify({
-    greeting: 'Hello!',
-  });
+  const runtimeJsonContents = {
+    // eslint-disable-next-line quotes, quote-props
+    "greeting": "Hello!",
+  };
   const runtimeStyleContents = `
     body { background: #000; color: #ccc; }
     .greeting { font: 600 40px/50px fantasy; text-align: center; }
@@ -22,20 +24,24 @@ module.exports = function webpackConfig() {
     },
     output: {
       filename: '[name].js',
-      path: 'dist',
+      path: path.join(__dirname, 'dist'),
       publicPath: '/',
       devtoolModuleFilenameTemplate: '../[resource-path]',
     },
     module: {
-      loaders: [
+      rules: [
         {
           test: /\.json$/,
-          loaders: ['json-loader'],
+          use: [
+            {
+              loader: 'json-loader',
+            },
+          ],
         },
         {
           test: /\.css$/,
           loader: ExtractTextPlugin.extract({
-            fallbackLoader: 'style-loader',
+            fallback: 'style-loader',
             loader: 'css-loader?sourceMap',
           }),
         },
