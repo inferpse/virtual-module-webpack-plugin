@@ -4,31 +4,16 @@
 
 const VirtualStats = require('./virtual-stats');
 
-class VirtualModulePlugin {
+class VirtualModulePluginDynamic {
   constructor(options) {
     this.options = options;
   }
 
   apply(compiler) {
+    const self = this;
     const moduleName = this.options.moduleName;
-    const ctime = VirtualModulePlugin.statsDate();
+    const ctime = VirtualModulePluginDynamic.statsDate();
     let modulePath = this.options.path;
-
-    let contents;
-    if (typeof this.options.contents === 'string') {
-      contents = this.options.contents;
-    }
-    if (typeof this.options.contents === 'object') {
-      if (typeof this.options.contents.then !== 'function') {
-        contents = JSON.stringify(this.options.contents);
-      }
-    }
-    if (typeof this.options.contents === 'function') {
-      contents = this.options.contents();
-    }
-    if (typeof contents === 'string') {
-      contents = Promise.resolve(contents);
-    }
 
     function resolverPlugin(request, cb) {
       // populate the file system cache with the virtual module
@@ -44,16 +29,11 @@ class VirtualModulePlugin {
         modulePath = this.join(compiler.context, moduleName);
       }
 
-      const resolve = (data) => {
-        VirtualModulePlugin.populateFilesystem({ fs, modulePath, contents: data, ctime });
-      };
-
-      const resolved = contents.then(resolve);
-      if (!cb) {
-        return;
+      if (modulePath === request.request) {
+        VirtualModulePluginDynamic.populateFilesystem({ fs, modulePath, contents: self.options.contents() });
       }
 
-      resolved.then(() => cb());
+      cb();
     }
 
     if (!compiler.resolvers.normal) {
@@ -80,7 +60,7 @@ class VirtualModulePlugin {
     } else if (fs._readFileStorage.data[modulePath]) { // enhanced-resolve@3.3.0 or lower
       return;
     }
-    const stats = VirtualModulePlugin.createStats(options);
+    const stats = VirtualModulePluginDynamic.createStats(options);
     if (statStorageIsMap) { // enhanced-resolve@3.4.0 or greater
       fs._statStorage.data.set(modulePath, [null, stats]);
     } else { // enhanced-resolve@3.3.0 or lower
@@ -105,10 +85,10 @@ class VirtualModulePlugin {
       options = {};
     }
     if (!options.ctime) {
-      options.ctime = VirtualModulePlugin.statsDate();
+      options.ctime = VirtualModulePluginDynamic.statsDate();
     }
     if (!options.mtime) {
-      options.mtime = VirtualModulePlugin.statsDate();
+      options.mtime = VirtualModulePluginDynamic.statsDate();
     }
     if (!options.size) {
       options.size = 0;
@@ -134,4 +114,4 @@ class VirtualModulePlugin {
   }
 }
 
-module.exports = VirtualModulePlugin;
+module.exports = VirtualModulePluginDynamic;
