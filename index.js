@@ -30,7 +30,7 @@ class VirtualModulePluginDynamic {
       }
 
       if (modulePath === request.request) {
-        VirtualModulePluginDynamic.populateFilesystem({ fs, modulePath, contents: self.options.contents() });
+        VirtualModulePluginDynamic.populateFilesystem({ fs, modulePath, contents: self.options.contents(), ctime }, this);
       }
 
       cb();
@@ -45,31 +45,39 @@ class VirtualModulePluginDynamic {
     }
   }
 
-  static populateFilesystem(options) {
-    const fs = options.fs;
-    const modulePath = options.modulePath;
-    const contents = options.contents;
-    const mapIsAvailable = typeof Map !== 'undefined';
-    const statStorageIsMap = mapIsAvailable && fs._statStorage.data instanceof Map;
-    const readFileStorageIsMap = mapIsAvailable && fs._readFileStorage.data instanceof Map;
+  static populateFilesystem(options, instance) {
+    const { fs, modulePath, contents } = options;
 
-    if (readFileStorageIsMap) { // enhanced-resolve@3.4.0 or greater
-      if (fs._readFileStorage.data.has(modulePath)) {
-        return;
-      }
-    } else if (fs._readFileStorage.data[modulePath]) { // enhanced-resolve@3.3.0 or lower
+    if (VirtualModulePluginDynamic.storageContainsFile(fs._readFileStorage, modulePath)) {
       return;
     }
-    const stats = VirtualModulePluginDynamic.createStats(options);
-    if (statStorageIsMap) { // enhanced-resolve@3.4.0 or greater
-      fs._statStorage.data.set(modulePath, [null, stats]);
-    } else { // enhanced-resolve@3.3.0 or lower
-      fs._statStorage.data[modulePath] = [null, stats];
+
+    if (instance._prevContents !== contents) {
+      instance._prevContents = contents;
+      instance._prevStats = VirtualModulePluginDynamic.createStats(options);
     }
-    if (readFileStorageIsMap) { // enhanced-resolve@3.4.0 or greater
-      fs._readFileStorage.data.set(modulePath, [null, contents]);
+
+    VirtualModulePluginDynamic.setStorageData(fs._statStorage, modulePath, [null, instance._prevStats]);
+    VirtualModulePluginDynamic.setStorageData(fs._readFileStorage, modulePath, [null, instance._prevContents]);
+  }
+
+  static storageContainsFile(storage, modulePath) {
+    const storageIsMap = typeof Map !== 'undefined' && storage.data instanceof Map;
+
+    if (storageIsMap) { // enhanced-resolve@3.4.0 or greater
+      return storage.data.has(modulePath);
     } else { // enhanced-resolve@3.3.0 or lower
-      fs._readFileStorage.data[modulePath] = [null, contents];
+      return storage.data[modulePath];
+    }
+  }
+
+  static setStorageData(storage, modulePath, value) {
+    const storageIsMap = typeof Map !== 'undefined' && storage.data instanceof Map;
+
+    if (storageIsMap) { // enhanced-resolve@3.4.0 or greater
+      storage.data.set(modulePath, value);
+    } else { // enhanced-resolve@3.3.0 or lower
+      storage.data[modulePath] = value;
     }
   }
 
